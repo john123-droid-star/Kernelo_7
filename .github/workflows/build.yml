@@ -32,19 +32,19 @@ jobs:
         ref: 'master'
         path: 'anykernel'
 
-    # 4. Set up standard Linux dependencies including python3-2to3 for refactoring legacy scripts
+    # 4. Set up standard Linux command line dependencies
     - name: Install Build Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi 2to3
+        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    # 5. Patch legacy script syntax universally and compile the kernel
+    # 5. Compile the kernel natively by completely bypassing the legacy Python wrapper loops
     - name: Compile Kernel
       run: |
-        # Natively rewrites the entire gcc-wrapper.py script layout to clear all Python 2 syntax errors automatically
-        2to3 -w kernel-source/scripts/gcc-wrapper.py
+        # BYPASS PYTHON PROBLEMS ENTIRELY: Swap out the wrapper command script link with a direct execution layer
+        sed -i 's/$(srctree)\/scripts\/gcc-wrapper.py //g' kernel-source/Makefile
         
-        # Force variables to map as references for multiple definition issue
+        # Force parser tracking variables to map as references for multiple definition issue
         sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' kernel-source/scripts/dtc/dtc-lexer.lex.c_shipped
         
         cd kernel-source
