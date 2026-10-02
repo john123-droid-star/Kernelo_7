@@ -38,11 +38,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    # 5. Patch legacy Python scripts and compile the kernel
+    # 5. Patch legacy script variables and compile the kernel
     - name: Compile Kernel
       run: |
         # Fix the outdated Python 2 print syntax to make it compatible with modern Python 3 environments
-        sed -i 's/print >> sys.stderr, args\[0\] + \x27:\x27,e.strerror/print(args[0] + ": " + e.strerror, file=sys.stderr)/g' kernel-source/scripts/gcc-wrapper.py
+        sed -i 's/print >> sys.stderr, args\[0\] + \x27:\x27,e.strerror/print(args + ": " + e.strerror, file=sys.stderr)/g' kernel-source/scripts/gcc-wrapper.py
         
         cd kernel-source
         export ARCH=arm64
@@ -51,6 +51,10 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         export CC=clang
+        
+        # FIX MULTIPLE DEFINITION ERROR: Forces modern compiler linkers to handle duplicate definitions gracefully
+        export HOSTCFLAGS="-fcommon"
+        export HOSTCXXFLAGS="-fcommon"
         
         # Initialize the official stock Xiaomi Violet Android 10 user configuration layout
         make vendor/violet-perf_defconfig
