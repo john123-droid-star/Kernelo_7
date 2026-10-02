@@ -1,4 +1,3 @@
-
 name: Build Violet Unlocked Module Kernel
 
 on:
@@ -9,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # 1. Natively fetch the official Xiaomi Kernel Source code
     - name: Download Violet Kernel Source Tree
       uses: actions/checkout@v4
       with:
@@ -16,26 +16,29 @@ jobs:
         ref: 'violet-q-oss'
         path: 'kernel-source'
 
+    # 2. Natively fetch the pre-extracted Android Clang compiler binaries
     - name: Download Pre-Extracted Clang Toolchain
       uses: actions/checkout@v4
       with:
         repository: 'ZyCromerZ/Clang'
-        ref: '14' # Uses stable Clang 14 compiled specifically for Android kernels
+        ref: '14'
         path: 'toolchain'
 
+    # 3. Natively fetch the AnyKernel3 framework (fixes exit code 9)
+    - name: Download AnyKernel3 Packaging Tools Natively
+      uses: actions/checkout@v4
+      with:
+        repository: 'osm0sis/AnyKernel3'
+        ref: 'master'
+        path: 'anykernel'
+
+    # 4. Set up standard Linux command line dependencies
     - name: Install Build Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget
 
-    - name: Download Packaging Tools
-      run: |
-        # Download AnyKernel3 framework directly via official HTTP archive link
-        curl -L "https://github.com" -o anykernel.zip
-        unzip -q anykernel.zip
-        mv AnyKernel3-master anykernel
-        rm anykernel.zip
-
+    # 5. Compile the kernel and aggressively strip out module signature verification layers
     - name: Compile Kernel
       run: |
         cd kernel-source
@@ -57,6 +60,7 @@ jobs:
         # Compile using cloud processing cores
         make -j$(nproc)
         
+    # 6. Inject the finished files cleanly into AnyKernel3 structure
     - name: Package into Flashable ZIP
       run: |
         if [ -f kernel-source/arch/arm64/boot/Image.gz-dtb ]; then
@@ -71,6 +75,7 @@ jobs:
         sed -i 's/device.name1=test/device.name1=violet/g' anykernel.sh
         zip -r9 ../Violet-UnlockedKernel-A10.zip *
 
+    # 7. Provide the downloadable link block inside the build actions log panel
     - name: Upload Flashable Kernel to GitHub
       uses: actions/upload-artifact@v4
       with:
