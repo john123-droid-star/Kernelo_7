@@ -44,6 +44,9 @@ jobs:
         # Fix the outdated Python 2 print syntax to make it compatible with modern Python 3 environments
         sed -i 's/print >> sys.stderr, args\[0\] + \x27:\x27,e.strerror/print(args + ": " + e.strerror, file=sys.stderr)/g' kernel-source/scripts/gcc-wrapper.py
         
+        # PERMANENT FIX FOR MULTIPLE DEFINITION OF YYLLOC: Force variables to map as references
+        sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' kernel-source/scripts/dtc/dtc-lexer.lex.c_shipped
+        
         cd kernel-source
         export ARCH=arm64
         export SUBARCH=arm64
@@ -51,10 +54,6 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         export CC=clang
-        
-        # FIX MULTIPLE DEFINITION ERROR: Forces modern compiler linkers to handle duplicate definitions gracefully
-        export HOSTCFLAGS="-fcommon"
-        export HOSTCXXFLAGS="-fcommon"
         
         # Initialize the official stock Xiaomi Violet Android 10 user configuration layout
         make vendor/violet-perf_defconfig
