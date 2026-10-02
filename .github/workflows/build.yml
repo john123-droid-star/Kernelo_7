@@ -38,32 +38,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    # 5. Fix trace configurations, satisfy header layout references, and compile the kernel cleanly
+    # 5. Disable the broken QCOM MDSS trace driver and build the stock Violet kernel cleanly
     - name: Compile Kernel
       run: |
-        # DUMMY OUT THE WRAPPER ENTIRELY: Rewrites the script into a native Python 3 command pass-through execution block
-        cat << 'EOF' > kernel-source/scripts/gcc-wrapper.py
-        #!/usr/bin/env python3
-        import sys, subprocess
-        sys.exit(subprocess.call(sys.argv[1:]))
-        EOF
-        chmod +x kernel-source/scripts/gcc-wrapper.py
-        
-        # FIX TRACE EVENT LOOKUP ROADBLOCK (Option 3): Inject the missing system events tracking header stubs
-        mkdir -p kernel-source/include/trace/events
-        cat << 'EOF' > kernel-source/include/trace/events/mdss_pll.h
-        #undef TRACE_SYSTEM
-        #define TRACE_SYSTEM mdss_pll
-        #if !defined(_TRACE_MDSS_PLL_H) || defined(TRACE_HEADER_MULTI_READ)
-        #define _TRACE_MDSS_PLL_H
-        #include <linux/tracepoint.h>
-        #endif
-        #include <trace/define_trace.h>
-        EOF
-        
-        # Force parser tracking variables to map as references for multiple definition issue
-        sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' kernel-source/scripts/dtc/dtc-lexer.lex.c_shipped
-        
         cd kernel-source
         export ARCH=arm64
         export SUBARCH=arm64
@@ -71,23 +48,27 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         export CC=clang
-        
-        # Initialize the official stock Xiaomi Violet Android 10 user configuration layout
+
+        # Initialize the stock Xiaomi Violet Android 10 configuration
         make vendor/violet-perf_defconfig
-        
-        # REMOVE DRIVER CONFIGURATION CONFLICTS (Option 1): Strip the problematic DSI tracing profiles
-        sed -i '/CONFIG_DSI_CLK_PLL/d' .config
+
+        # Disable the QCOM MDSS PLL / DSI driver that triggers the missing
+        # mdss_pll_trace.h fatal error in the trace include path.
+        sed -i '/CONFIG_DSI_CLK_PLL/d;/CONFIG_QCOM_MDSS_PLL/d;/CONFIG_QCOM_MDSS_PLL_DSI_10NM/d;/CONFIG_MDSS_DSI_PLL/d' .config
         echo "# CONFIG_DSI_CLK_PLL is not set" >> .config
-        
-        # STRIP AND DISABLE KERNEL MODULE SIGNING LOCKS
+        echo "# CONFIG_QCOM_MDSS_PLL is not set" >> .config
+        echo "# CONFIG_QCOM_MDSS_PLL_DSI_10NM is not set" >> .config
+        echo "# CONFIG_MDSS_DSI_PLL is not set" >> .config
+
+        # Strip module signing locks that often trip CI builds
         sed -i 's/CONFIG_MODULE_SIG=y/# CONFIG_MODULE_SIG is not set/g' .config
         sed -i 's/CONFIG_MODULE_SIG_FORCE=y/# CONFIG_MODULE_SIG_FORCE is not set/g' .config
         sed -i 's/CONFIG_MODULE_SIG_ALL=y/# CONFIG_MODULE_SIG_ALL is not set/g' .config
         echo "CONFIG_MODULE_FORCE_LOAD=y" >> .config
-        
-        # FIX DESIGNATED INITIALIZER & EXTEND COMPILER FLAGS FOR MISSING CONFIG FILES
-        make -j$(nproc) KCFLAGS="-Wno-error -Wno-designated-init -Wno-missing-include-dirs"
-        
+
+        # Compile with relaxed warnings for this upstream Xiaomi tree
+        make -j"$(nproc)" KCFLAGS="-Wno-error -Wno-designated-init -Wno-missing-include-dirs"
+
     # 6. Inject the finished files cleanly into AnyKernel3 structure
     - name: Package into Flashable ZIP
       run: |
@@ -98,7 +79,7 @@ jobs:
           [ -f kernel-source/arch/arm64/boot/dtb ] && cp kernel-source/arch/arm64/boot/dtb anykernel/
           [ -f kernel-source/arch/arm64/boot/dtbo.img ] && cp kernel-source/arch/arm64/boot/dtbo.img anykernel/
         fi
-        
+
         cd anykernel
         sed -i 's/device.name1=test/device.name1=violet/g' anykernel.sh
         zip -r9 ../Violet-UnlockedKernel-A10.zip *
