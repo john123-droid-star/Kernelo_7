@@ -1,1 +1,78 @@
 
+name: Build Violet Unlocked Module Kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download Violet Kernel Source Tree
+      uses: actions/checkout@v4
+      with:
+        repository: 'MiCode/Xiaomi_Kernel_OpenSource'
+        ref: 'violet-q-oss'
+        path: 'kernel-source'
+
+    - name: Download Pre-Extracted Clang Toolchain
+      uses: actions/checkout@v4
+      with:
+        repository: 'ZyCromerZ/Clang'
+        ref: '14' # Uses stable Clang 14 compiled specifically for Android kernels
+        path: 'toolchain'
+
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget
+
+    - name: Download Packaging Tools
+      run: |
+        # Download AnyKernel3 framework directly via official HTTP archive link
+        curl -L "https://github.com" -o anykernel.zip
+        unzip -q anykernel.zip
+        mv AnyKernel3-master anykernel
+        rm anykernel.zip
+
+    - name: Compile Kernel
+      run: |
+        cd kernel-source
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export CC=clang
+        
+        # Initialize the official stock Xiaomi Violet Android 10 user configuration layout
+        make violet_user_defconfig
+        
+        # STRIP AND DISABLE KERNEL MODULE SIGNING LOCKS
+        sed -i 's/CONFIG_MODULE_SIG=y/# CONFIG_MODULE_SIG is not set/g' .config
+        sed -i 's/CONFIG_MODULE_SIG_FORCE=y/# CONFIG_MODULE_SIG_FORCE is not set/g' .config
+        sed -i 's/CONFIG_MODULE_SIG_ALL=y/# CONFIG_MODULE_SIG_ALL is not set/g' .config
+        echo "CONFIG_MODULE_FORCE_LOAD=y" >> .config
+        
+        # Compile using cloud processing cores
+        make -j$(nproc)
+        
+    - name: Package into Flashable ZIP
+      run: |
+        if [ -f kernel-source/arch/arm64/boot/Image.gz-dtb ]; then
+          cp kernel-source/arch/arm64/boot/Image.gz-dtb anykernel/
+        elif [ -f kernel-source/arch/arm64/boot/Image.gz ]; then
+          cp kernel-source/arch/arm64/boot/Image.gz anykernel/
+          [ -f kernel-source/arch/arm64/boot/dtb ] && cp kernel-source/arch/arm64/boot/dtb anykernel/
+          [ -f kernel-source/arch/arm64/boot/dtbo.img ] && cp kernel-source/arch/arm64/boot/dtbo.img anykernel/
+        fi
+        
+        cd anykernel
+        sed -i 's/device.name1=test/device.name1=violet/g' anykernel.sh
+        zip -r9 ../Violet-UnlockedKernel-A10.zip *
+
+    - name: Upload Flashable Kernel to GitHub
+      uses: actions/upload-artifact@v4
+      with:
+        name: Violet-Kernel-Flashable-ZIP
+        path: Violet-UnlockedKernel-A10.zip
