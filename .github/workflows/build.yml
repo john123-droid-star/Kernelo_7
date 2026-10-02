@@ -48,8 +48,8 @@ jobs:
         export CROSS_COMPILE=aarch64-linux-gnu-
         export CC=clang
         
-        # CORRECTED INITIALIZATION LINE: Points to the exact production defconfig in Xiaomi's tree
-        make violet_defconfig
+        # CORRECTED DEFINITION BluePrint: Triggers the hidden nested Qualcomm production config profile
+        make vendor/violet-perf_defconfig
         
         # STRIP AND DISABLE KERNEL MODULE SIGNING LOCKS
         sed -i 's/CONFIG_MODULE_SIG=y/# CONFIG_MODULE_SIG is not set/g' .config
