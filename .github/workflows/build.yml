@@ -32,23 +32,27 @@ jobs:
         ref: 'master'
         path: 'anykernel'
 
-    # 4. Set up standard Linux command line dependencies
+    # 4. Set up standard Linux dependencies including the missing cross-compiler components
     - name: Install Build Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget
+        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    # 5. Compile the kernel and aggressively strip out module signature verification layers
+    # 5. Patch legacy Python scripts and compile the kernel
     - name: Compile Kernel
       run: |
+        # Fix the outdated Python 2 print syntax to make it compatible with modern Python 3 environments
+        sed -i 's/print >> sys.stderr, args\[0\] + \x27:\x27,e.strerror/print(args[0] + ": " + e.strerror, file=sys.stderr)/g' kernel-source/scripts/gcc-wrapper.py
+        
         cd kernel-source
         export ARCH=arm64
         export SUBARCH=arm64
         export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
         export CROSS_COMPILE=aarch64-linux-gnu-
+        export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
         export CC=clang
         
-        # CORRECTED DEFINITION BluePrint: Triggers the hidden nested Qualcomm production config profile
+        # Initialize the official stock Xiaomi Violet Android 10 user configuration layout
         make vendor/violet-perf_defconfig
         
         # STRIP AND DISABLE KERNEL MODULE SIGNING LOCKS
