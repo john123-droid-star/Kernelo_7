@@ -32,17 +32,22 @@ jobs:
         ref: 'master'
         path: 'anykernel'
 
-    # 4. Set up standard Linux command line dependencies
+    # 4. Set up standard Linux dependencies including cross-compiler components
     - name: Install Build Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    # 5. Compile the kernel natively by completely bypassing the legacy Python wrapper loops
+    # 5. Neutralize the wrapper script layout and compile the kernel cleanly
     - name: Compile Kernel
       run: |
-        # BYPASS PYTHON PROBLEMS ENTIRELY: Swap out the wrapper command script link with a direct execution layer
-        sed -i 's/$(srctree)\/scripts\/gcc-wrapper.py //g' kernel-source/Makefile
+        # DUMMY OUT THE WRAPPER ENTIRELY: Rewrites the script into a native Python 3 command pass-through execution block
+        cat << 'EOF' > kernel-source/scripts/gcc-wrapper.py
+        #!/usr/bin/env python3
+        import sys, subprocess
+        sys.exit(subprocess.call(sys.argv[1:]))
+        EOF
+        chmod +x kernel-source/scripts/gcc-wrapper.py
         
         # Force parser tracking variables to map as references for multiple definition issue
         sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' kernel-source/scripts/dtc/dtc-lexer.lex.c_shipped
