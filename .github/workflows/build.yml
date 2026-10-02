@@ -1,111 +1,42 @@
-name: Build Violet Unlocked Module Kernel
-
-on:
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    # 1. Natively fetch the official Xiaomi Kernel Source code
-    - name: Download Violet Kernel Source Tree
-      uses: actions/checkout@v4
-      with:
-        repository: 'MiCode/Xiaomi_Kernel_OpenSource'
-        ref: 'violet-q-oss'
-        path: 'kernel-source'
-
-    # 2. Natively fetch the pre-extracted Android Clang compiler binaries
-    - name: Download Pre-Extracted Clang Toolchain
-      uses: actions/checkout@v4
-      with:
-        repository: 'ZyCromerZ/Clang'
-        ref: '14'
-        path: 'toolchain'
-
-    # 3. Natively fetch the AnyKernel3 framework
-    - name: Download AnyKernel3 Packaging Tools Natively
-      uses: actions/checkout@v4
-      with:
-        repository: 'osm0sis/AnyKernel3'
-        ref: 'master'
-        path: 'anykernel'
-
-    # 4. Set up standard Linux command line dependencies
-    - name: Install Build Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-
-    # 5. Fix trace configurations, satisfy header layout references, and compile the kernel cleanly
-    - name: Compile Kernel
-      run: |
-        # DUMMY OUT THE WRAPPER ENTIRELY: Rewrites the script into a native Python 3 command pass-through execution block
-        cat << 'EOF' > kernel-source/scripts/gcc-wrapper.py
-        #!/usr/bin/env python3
-        import sys, subprocess
-        sys.exit(subprocess.call(sys.argv[1:]))
-        EOF
-        chmod +x kernel-source/scripts/gcc-wrapper.py
-        
-        # FIX TRACE EVENT LOOKUP ROADBLOCK (Option 3): Inject the missing system events tracking header stubs
-        mkdir -p kernel-source/include/trace/events
-        cat << 'EOF' > kernel-source/include/trace/events/mdss_pll.h
-        #undef TRACE_SYSTEM
-        #define TRACE_SYSTEM mdss_pll
-        #if !defined(_TRACE_MDSS_PLL_H) || defined(TRACE_HEADER_MULTI_READ)
-        #define _TRACE_MDSS_PLL_H
-        #include <linux/tracepoint.h>
-        #endif
-        #include <trace/define_trace.h>
-        EOF
-        
-        # Force parser tracking variables to map as references for multiple definition issue
-        sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' kernel-source/scripts/dtc/dtc-lexer.lex.c_shipped
-        
-        cd kernel-source
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
-        export CROSS_COMPILE=aarch64-linux-gnu-
-        export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        export CC=clang
-        
-        # Initialize the official stock Xiaomi Violet Android 10 user configuration layout
-        make vendor/violet-perf_defconfig
-        
-        # REMOVE DRIVER CONFIGURATION CONFLICTS (Option 1): Strip the problematic DSI tracing profiles
-        sed -i '/CONFIG_DSI_CLK_PLL/d' .config
-        echo "# CONFIG_DSI_CLK_PLL is not set" >> .config
-        
-        # STRIP AND DISABLE KERNEL MODULE SIGNING LOCKS
-        sed -i 's/CONFIG_MODULE_SIG=y/# CONFIG_MODULE_SIG is not set/g' .config
-        sed -i 's/CONFIG_MODULE_SIG_FORCE=y/# CONFIG_MODULE_SIG_FORCE is not set/g' .config
-        sed -i 's/CONFIG_MODULE_SIG_ALL=y/# CONFIG_MODULE_SIG_ALL is not set/g' .config
-        echo "CONFIG_MODULE_FORCE_LOAD=y" >> .config
-        
-        # FIX DESIGNATED INITIALIZER & EXTEND COMPILER FLAGS FOR MISSING CONFIG FILES
-        make -j$(nproc) KCFLAGS="-Wno-error -Wno-designated-init -Wno-missing-include-dirs"
-        
-    # 6. Inject the finished files cleanly into AnyKernel3 structure
-    - name: Package into Flashable ZIP
-      run: |
-        if [ -f kernel-source/arch/arm64/boot/Image.gz-dtb ]; then
-          cp kernel-source/arch/arm64/boot/Image.gz-dtb anykernel/
-        elif [ -f kernel-source/arch/arm64/boot/Image.gz ]; then
-          cp kernel-source/arch/arm64/boot/Image.gz anykernel/
-          [ -f kernel-source/arch/arm64/boot/dtb ] && cp kernel-source/arch/arm64/boot/dtb anykernel/
-          [ -f kernel-source/arch/arm64/boot/dtbo.img ] && cp kernel-source/arch/arm64/boot/dtbo.img anykernel/
-        fi
-        
-        cd anykernel
-        sed -i 's/device.name1=test/device.name1=violet/g' anykernel.sh
-        zip -r9 ../Violet-UnlockedKernel-A10.zip *
-
-    # 7. Provide the downloadable link block inside the build actions log panel
-    - name: Upload Flashable Kernel to GitHub
-      uses: actions/upload-artifact@v4
-      with:
-        name: Violet-Kernel-Flashable-ZIP
-        path: Violet-UnlockedKernel-A10.zip
+- name: Compile Kernel
+  run: |
+    cat << 'EOF' > kernel-source/scripts/gcc-wrapper.py
+    #!/usr/bin/env python3
+    import sys, subprocess
+    sys.exit(subprocess.call(sys.argv[1:]))
+    EOF
+    chmod +x kernel-source/scripts/gcc-wrapper.py
+    
+    # FIX TRACE EVENT LOOKUP ROADBLOCK: Create trace header in correct driver directory
+    mkdir -p kernel-source/drivers/clk/qcom/mdss
+    cat << 'EOF' > kernel-source/drivers/clk/qcom/mdss/mdss_pll_trace.h
+    #undef TRACE_SYSTEM
+    #define TRACE_SYSTEM mdss_pll
+    #if !defined(_TRACE_MDSS_PLL_H) || defined(TRACE_HEADER_MULTI_READ)
+    #define _TRACE_MDSS_PLL_H
+    #include <linux/tracepoint.h>
+    #endif
+    #include <trace/define_trace.h>
+    EOF
+    
+    sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' kernel-source/scripts/dtc/dtc-lexer.lex.c_shipped
+    
+    cd kernel-source
+    export ARCH=arm64
+    export SUBARCH=arm64
+    export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
+    export CROSS_COMPILE=aarch64-linux-gnu-
+    export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+    export CC=clang
+    
+    make vendor/violet-perf_defconfig
+    
+    sed -i '/CONFIG_DSI_CLK_PLL/d' .config
+    echo "# CONFIG_DSI_CLK_PLL is not set" >> .config
+    
+    sed -i 's/CONFIG_MODULE_SIG=y/# CONFIG_MODULE_SIG is not set/g' .config
+    sed -i 's/CONFIG_MODULE_SIG_FORCE=y/# CONFIG_MODULE_SIG_FORCE is not set/g' .config
+    sed -i 's/CONFIG_MODULE_SIG_ALL=y/# CONFIG_MODULE_SIG_ALL is not set/g' .config
+    echo "CONFIG_MODULE_FORCE_LOAD=y" >> .config
+    
+    make -j$(nproc) KCFLAGS="-Wno-error -Wno-designated-init -Wno-missing-include-dirs"
