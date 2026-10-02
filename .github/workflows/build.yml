@@ -32,19 +32,19 @@ jobs:
         ref: 'master'
         path: 'anykernel'
 
-    # 4. Set up standard Linux dependencies including the missing cross-compiler components
+    # 4. Set up standard Linux dependencies including python3-2to3 for refactoring legacy scripts
     - name: Install Build Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+        sudo apt-get install -y bc build-essential libncurses5-dev bison flex libssl-dev libelf-dev clang lld git curl zip wget gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi 2to3
 
-    # 5. Patch legacy script variables and compile the kernel
+    # 5. Patch legacy script syntax universally and compile the kernel
     - name: Compile Kernel
       run: |
-        # Fix the outdated Python 2 print syntax to make it compatible with modern Python 3 environments
-        sed -i 's/print >> sys.stderr, args\[0\] + \x27:\x27,e.strerror/print(args + ": " + e.strerror, file=sys.stderr)/g' kernel-source/scripts/gcc-wrapper.py
+        # Natively rewrites the entire gcc-wrapper.py script layout to clear all Python 2 syntax errors automatically
+        2to3 -w kernel-source/scripts/gcc-wrapper.py
         
-        # PERMANENT FIX FOR MULTIPLE DEFINITION OF YYLLOC: Force variables to map as references
+        # Force variables to map as references for multiple definition issue
         sed -i 's/^YYLTYPE yylloc;/extern YYLTYPE yylloc;/g' kernel-source/scripts/dtc/dtc-lexer.lex.c_shipped
         
         cd kernel-source
